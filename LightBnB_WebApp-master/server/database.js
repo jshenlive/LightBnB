@@ -152,15 +152,64 @@ const getAllProperties = function (options, limit = 10) {
   // return Promise.resolve(limitedProperties);
 
   //USING DATABASE lightbnb
-  return pool
-    .query(`SELECT * FROM properties LIMIT $1`, [limit])
-    .then((result) => {
-      // console.log(result.rows);
-      return result.rows;
-    })
-    .catch((err) => {
-      console.log(err.message);
-    });
+  // 1
+  const queryParams = [];
+  let input = false;
+  // 2
+  let queryString = `
+  SELECT properties.*, avg(property_reviews.rating) as average_rating
+  FROM properties
+  JOIN property_reviews ON properties.id = property_id
+  `;
+
+  // 3
+
+  if (options.owner_id) {
+    queryParams.push(`%${options.owner_id}%`);
+    queryString += `WHERE owner_id = $${queryParams.length} `;
+  }
+
+  if (options.city) {
+    queryParams.push(`%${options.city}%`);
+    queryString += `WHERE city LIKE $${queryParams.length} `;
+    input = true;
+  }
+
+  if (options.minimum_price_per_night && options.maximum_price_per_night) {
+    queryParams.push(`${options.minimum_price_per_night*100}`);
+    queryParams.push(`${options.maximum_price_per_night*100}`);
+    if(!input){
+    queryString += `WHERE cost_per_night between $${queryParams.length-1} AND $${queryParams.length} `;
+    }else {
+      queryString += `AND cost_per_night between $${queryParams.length-1} AND $${queryParams.length} `;
+    }
+    input = true;
+  }
+ 
+
+  // 4
+ 
+  queryString += `
+  GROUP BY properties.id `;
+
+  if (options.minimum_rating) {
+    queryParams.push(`${options.minimum_rating}`);
+ 
+    queryString += `HAVING avg(property_reviews.rating) >= $${queryParams.length} `
+    
+  }
+
+  queryParams.push(limit);
+  queryString+=
+  `ORDER BY cost_per_night
+  LIMIT $${queryParams.length};
+  `;
+
+  // 5
+  console.log(queryString, queryParams);
+
+  // 6
+  return pool.query(queryString, queryParams).then((res) => res.rows);
 
 
 }
